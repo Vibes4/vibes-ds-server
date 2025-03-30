@@ -6,9 +6,6 @@
 #include <iostream>
 using namespace std;
 
-
-#pragma comment(lib, "ws2_32.lib")
-
 class HTTPServer {
     private:
         int port;

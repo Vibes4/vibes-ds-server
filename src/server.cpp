@@ -1,4 +1,7 @@
 #include "server.h"
+#include "helper.h"
+#include "kv_store.h"
+KVStore kvStore;
 
 HTTPServer::HTTPServer(int port): port(port) {
     WSADATA wsa;
@@ -46,11 +49,34 @@ void HTTPServer::start(){
 void HTTPServer::handle_client(SOCKET client_socket) {
     char buffer[1024] = {0};
     recv(client_socket, buffer, sizeof(buffer), 0);
-    string response =
-    "HTTP/1.1 200 OK\r\n"
-    "Content-Type: text/plain\r\n"
-    "Content-Length: 13\r\n"
-    "\r\n"
-    "Hello, World!";
-    send(client_socket, response.c_str(), response.length(), 0);
+    // Print the full HTTP request to console
+    string request(buffer);
+
+    cout << "Received Request:\n" << request << "\n-------------------\n";
+    string response;
+
+    // Check if request starts with /redis
+    if (request.find("GET /redis") != 0) {
+        // Parse query parameters (cmd, key, value)
+        auto params = parse_query(request);
+        string cmd = params["cmd"];
+        string key = params["key"];
+        string value = params["value"];
+            // Process Redis commands
+        if (cmd == "SET" && !key.empty() && !value.empty()) {
+            kvStore.set(key, value);
+            send_response(client_socket, "200 OK", "OK");
+        } else if (cmd == "GET" && !key.empty()) {
+            send_response(client_socket, "200 OK", kvStore.get(key));
+        } else if (cmd == "DEL" && !key.empty()) {
+            kvStore.del(key);
+            send_response(client_socket, "200 OK", "Deleted");
+        } else {
+            send_response(client_socket, "400 Bad Request", "Invalid Command");
+        }
+    } else if(request.find("GET /ping") != 0){
+        send_response(client_socket, "200 OK", getAboutProject());
+    }
+
+    send_response(client_socket, "200 OK", "Hello, World!");
 }
