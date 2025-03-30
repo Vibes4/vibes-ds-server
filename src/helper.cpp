@@ -1,8 +1,8 @@
 #include <iostream>
 #include <string>      
-#include <map>        
+#include <map>    
 #include <sstream>    
-#include <winsock2.h>
+#include <fstream>
 #include "helper.h"
 using namespace std;
 
@@ -23,18 +23,32 @@ map<string, string> parse_query(const string& request) {
 }
 
 // Utility to send HTTP responses
-void send_response(SOCKET client_socket, const string& status, const string& body) {
+void send_response(SOCKET client_socket, const string& status, const string& body, const string& content_type) {
     string response =
         "HTTP/1.1 " + status + "\r\n"
-        "Content-Type: text/plain\r\n"
+        "Content-Type:"+ content_type + "\r\n"
         "Content-Length: " + to_string(body.length()) + "\r\n"
+        "Connection: close\r\n"  // Ensures client knows the connection will close
         "\r\n" + body;
-    send(client_socket, response.c_str(), response.length(), 0);
+
+    size_t total_sent = 0;
+    size_t response_length = response.length();
+    const char* response_data = response.c_str();
+
+    while (total_sent < response_length) {
+        int sent = send(client_socket, response_data + total_sent, response_length - total_sent, 0);
+        if (sent == SOCKET_ERROR) {
+            cerr << "Error sending response: " << WSAGetLastError() << endl;
+            return;
+        }
+        total_sent += sent;
+    }
 }
 
 
+
 string getAboutProject() {
-    return "Welcome to the Vibes-DS Server!\n"
+    return "Welcome to the Vibes-Data-Structure Server!\n"
            "\n"
            "This server implements a lightweight, Redis-like key-value store over HTTP.\n"
            "It supports basic commands such as:\n"
@@ -49,4 +63,15 @@ string getAboutProject() {
            "✔ Can handle multiple clients at once\n"
            "\n"
            "Developed by: Vaibhav (SDE)\n";
+}
+
+
+string read_file(const string& filename) {
+    ifstream file(filename);
+    if (!file) {
+        cerr << "File not found: " << filename << endl;
+        return "<h1>404 Not Found</h1><p>File not found: " + filename + "</p>";
+    }
+    string content((istreambuf_iterator<char>(file)), istreambuf_iterator<char>());
+    return content;
 }

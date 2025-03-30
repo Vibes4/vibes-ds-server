@@ -52,11 +52,10 @@ void HTTPServer::handle_client(SOCKET client_socket) {
     // Print the full HTTP request to console
     string request(buffer);
 
-    cout << "Received Request:\n" << request << "\n-------------------\n";
     string response;
 
     // Check if request starts with /redis
-    if (request.find("GET /redis") != 0) {
+    if (request.find("GET /redis") == 0) {
         // Parse query parameters (cmd, key, value)
         auto params = parse_query(request);
         string cmd = params["cmd"];
@@ -74,8 +73,11 @@ void HTTPServer::handle_client(SOCKET client_socket) {
         } else {
             send_response(client_socket, "400 Bad Request", "Invalid Command");
         }
-    } else if(request.find("GET /ping") != 0){
+    } else if(request.find("GET /ping") == 0){
         send_response(client_socket, "200 OK", getAboutProject());
+    } else if(request.find("GET /about") == 0){
+        string html_content = read_file("template/about.html");
+        send_response(client_socket, "200 OK", html_content, "text/html");
     }
 
     send_response(client_socket, "200 OK", "Hello, World!");
