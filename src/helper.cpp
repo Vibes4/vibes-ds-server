@@ -1,19 +1,34 @@
-#include <iostream>
-#include <string>      
-#include <map>    
-#include <sstream>    
-#include <fstream>
 #include "helper.h"
-using namespace std;
 
 map<string, string> parse_query(const string& request) {
     map<string, string> params;
-    size_t pos = request.find("?");
-    if (pos == string::npos) return params;
+    istringstream request_stream(request);
+    string request_line;
 
-    istringstream query(request.substr(pos + 1));
+    if (!getline(request_stream, request_line)) {
+        return params;
+    }
+
+    // Extract only the part after "GET " or "POST " and before " HTTP/1.1"
+    size_t first_space = request_line.find(" ");
+    size_t second_space = request_line.find(" ", first_space + 1);
+    if (first_space == string::npos || second_space == string::npos) {
+        return params;  // Malformed request
+    }
+
+    string path_and_query = request_line.substr(first_space + 1, second_space - first_space - 1);
+
+    // Find the '?' in the extracted path
+    size_t pos = path_and_query.find("?");
+    if (pos == string::npos) return params;  // No query parameters
+
+    // Extract the query string
+    string query_string = path_and_query.substr(pos + 1);
+    istringstream query_stream(query_string);
     string pair;
-    while (getline(query, pair, '&')) {
+    
+    // Parse key-value pairs
+    while (getline(query_stream, pair, '&')) {
         size_t eq_pos = pair.find("=");
         if (eq_pos != string::npos) {
             params[pair.substr(0, eq_pos)] = pair.substr(eq_pos + 1);
@@ -21,6 +36,8 @@ map<string, string> parse_query(const string& request) {
     }
     return params;
 }
+
+
 
 // Utility to send HTTP responses
 void send_response(SOCKET client_socket, const string& status, const string& body, const string& content_type) {

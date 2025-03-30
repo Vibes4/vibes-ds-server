@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <string>
 #include <mutex>
+#include <iostream>
 using namespace std;
 
 class KVStore {
@@ -16,6 +17,7 @@ class KVStore {
         void set(const string& key, const string& value);
         string get(const string& key);
         void del(const string& key);
+        void print();
 };
     
 #endif // KV_STORE_H
