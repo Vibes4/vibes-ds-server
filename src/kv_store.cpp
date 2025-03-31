@@ -89,3 +89,7 @@ void KVStore::print() {
     cout << "Total keys: " << store.size() << endl;
     cout << "------------------------" << endl;
 }
+
+unordered_map<string, string> KVStore::getAll() {
+    return store;
+}

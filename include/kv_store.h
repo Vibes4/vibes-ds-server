@@ -24,6 +24,7 @@ public:
     KVStore();
     void set(const string& key, const string& value);
     string get(const string& key);
+    unordered_map<string, string> getAll();
     void del(const string& key);
     void print();
 };

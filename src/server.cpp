@@ -55,7 +55,19 @@ void HTTPServer::handle_client(SOCKET client_socket) {
     string response;
 
     // Check if request starts with /redis
-    if (request.find("GET /redis") == 0) {
+    if(request.find("GET /redis/store/key-value-pair-td") == 0){
+        // Get all key-value pairs from the store and add them to the HTML
+        string html = "";
+        for (const auto& pair : kvStore.getAll()) {
+            html += "<tr><td>" + pair.first + "</td><td>" + pair.second + "</td>";
+            html += "<td><button onclick='editKey(\"" + pair.first + "\")'>Edit</button>";
+            html += "<button onclick='deleteKey(\"" + pair.first + "\")'>Delete</button></td></tr>";
+        }
+        send_response(client_socket, "200 OK", html, "text/html");
+    } else if(request.find("GET /redis/store") == 0){
+        string html_content = read_file("template/store.html");
+        send_response(client_socket, "200 OK", html_content, "text/html");
+    } else if (request.find("GET /redis") == 0) {
         // Parse query parameters (cmd, key, value)
         auto params = parse_query(request);
         string cmd = params["cmd"];
