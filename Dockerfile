@@ -10,12 +10,13 @@ WORKDIR /app
 # Copy the source code and include headers
 COPY src/ src/
 COPY include/ include/
+COPY template/ template/
 
 # Copy Makefile if you're using it
-COPY Makefile .  # (Optional)
+COPY Makefile .
 
 # Compile the server
-RUN g++ -o build/server src/server.cpp src/main.cpp -Iinclude -lws2_32
+RUN mingw32-make
 
 # Expose the server port (8080)
 EXPOSE 8080
