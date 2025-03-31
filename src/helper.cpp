@@ -43,7 +43,7 @@ map<string, string> parse_query(const string& request) {
 void send_response(SOCKET client_socket, const string& status, const string& body, const string& content_type) {
     string response =
         "HTTP/1.1 " + status + "\r\n"
-        "Content-Type:"+ content_type + "\r\n"
+        "Content-Type:"+ content_type + ";charset=UTF-8\r\n"
         "Content-Length: " + to_string(body.length()) + "\r\n"
         "Connection: close\r\n"  // Ensures client knows the connection will close
         "\r\n" + body;
