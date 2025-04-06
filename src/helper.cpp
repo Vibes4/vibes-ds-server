@@ -40,7 +40,7 @@ map<string, string> parse_query(const string& request) {
 
 
 // Utility to send HTTP responses
-void send_response(SOCKET client_socket, const string& status, const string& body, const string& content_type) {
+void send_response(SocketType client_socket, const string& status, const string& body, const string& content_type) {
     string response =
         "HTTP/1.1 " + status + "\r\n"
         "Content-Type:"+ content_type + ";charset=UTF-8\r\n"
@@ -54,8 +54,14 @@ void send_response(SOCKET client_socket, const string& status, const string& bod
 
     while (total_sent < response_length) {
         int sent = send(client_socket, response_data + total_sent, response_length - total_sent, 0);
-        if (sent == SOCKET_ERROR) {
-            cerr << "Error sending response: " << WSAGetLastError() << endl;
+        if (sent < 0) {
+            cerr << "Error sending response: " << 
+            #if IS_WIDNOWS 
+                WSAGetLastError()  
+            #else 
+                "" 
+            #endif 
+            << endl;
             return;
         }
         total_sent += sent;

@@ -1,25 +1,23 @@
-# Use a minimal base image with g++
-FROM debian:latest
-
-# Install dependencies
-RUN apt update && apt install -y g++ make
+# Use an updated GCC image with build tools
+FROM gcc:latest
 
 # Set the working directory inside the container
-WORKDIR /app
+WORKDIR /usr/src/redis-server
 
-# Copy the source code and include headers
-COPY src/ src/
-COPY include/ include/
-COPY template/ template/
+# Copy all source files, headers, and Makefile
+COPY . .
 
-# Copy Makefile if you're using it
-COPY Makefile .
+# Create the build directory
+RUN mkdir -p build
 
 # Compile the server
-RUN mingw32-make
+RUN g++ -std=c++11 -o build/server src/main.cpp src/server.cpp src/helper.cpp src/kv_store.cpp -Iinclude -lpthread
+
+# Ensure the binary is executable
+RUN chmod +x build/server
 
 # Expose the server port (8080)
 EXPOSE 8080
 
-# Run the server
+# Run the server when the container starts
 CMD ["./build/server"]
