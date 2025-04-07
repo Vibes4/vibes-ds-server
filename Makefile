@@ -2,7 +2,7 @@
 CXX = g++
 
 # Compiler flags
-CXXFLAGS = -Iinclude -Wall
+CXXFLAGS = -std=c++17 -Iinclude -Wall
 
 # Linker flags
 LDFLAGS = -lws2_32
