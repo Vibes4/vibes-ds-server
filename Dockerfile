@@ -2,7 +2,7 @@
 FROM gcc:latest
 
 # Set the working directory inside the container
-WORKDIR /usr/src/redis-server
+WORKDIR app
 
 # Copy all source files, headers, and Makefile
 COPY . .
@@ -18,6 +18,9 @@ RUN chmod +x build/server
 
 # Expose the server port (8080)
 EXPOSE 8080
+
+# Set volume mount point (optional but helpful for clarity)
+VOLUME ["vibes-redis-cache"]
 
 # Run the server when the container starts
 CMD ["./build/server"]
