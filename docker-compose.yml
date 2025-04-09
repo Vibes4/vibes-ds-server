@@ -1,6 +1,7 @@
 services:
-  vibes-redis-server:
-    image: vibes-redis-server
+  vibes-ds-server:
+    image: vibescontainer/vibes-ds-server:1.0.0
+    container_name: vibes-redis-server
     build:
       context: .
       dockerfile: Dockerfile
