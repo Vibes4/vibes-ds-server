@@ -2,19 +2,31 @@
 FROM gcc:latest
 
 # Set the working directory inside the container
-WORKDIR app
+WORKDIR /app
+
+# Install required packages first
+RUN apt-get update && apt-get install -y make g++
 
 # Copy all source files, headers, and Makefile
-COPY . .
+COPY src/ src/
+COPY include/ include/
+COPY template/ template/
+COPY Makefile Makefile
 
 # Create the build directory
 RUN mkdir -p build
 
-# Compile the server
-RUN g++ -std=c++11 -o build/server src/main.cpp src/server.cpp src/helper.cpp src/kv_store.cpp -Iinclude -lpthread
+# Copy the cache directory
+RUN mkdir -p cache
+
+# Add this before CMD
+RUN touch /app/cache/key-value.db
+
+# Compile using make
+RUN make
 
 # Ensure the binary is executable
-RUN chmod +x build/server
+RUN chmod +x build/server.exe
 
 # Expose the server port (8080)
 EXPOSE 8080
@@ -23,4 +35,4 @@ EXPOSE 8080
 VOLUME ["vibes-redis-cache"]
 
 # Run the server when the container starts
-CMD ["./build/server"]
+CMD ["./build/server.exe"]

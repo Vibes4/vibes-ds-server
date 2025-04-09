@@ -1,16 +1,13 @@
-version: "3.8"
-
 services:
-  vibes-ds-server:
+  vibes-redis-server:
+    image: vibes-redis-server
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: vibes-ds-server
     ports:
       - "8080:8080"
     volumes:
-      - data_volume:/app/data
+      - ./cache:/app/cache
     restart: unless-stopped
-
-volumes:
-  data_volume:
+    env_file:
+      - .env

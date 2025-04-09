@@ -4,11 +4,12 @@ CXX = g++
 # Compiler flags
 CXXFLAGS = -std=c++17 -Iinclude -Wall
 
-# Linker flags
-LDFLAGS = -lws2_32
+# Linker flags (commented out Windows-specific flag for Linux build)
+# LDFLAGS = -lws2_32
+LDFLAGS = -lpthread
 
 # Source files
-SRCS = $(wildcard src/*.cpp) 
+SRCS = $(wildcard src/*.cpp)
 
 # Object files (store .o files in object/)
 OBJS = $(SRCS:src/%.cpp=object/%.o)
@@ -18,11 +19,13 @@ TARGET = build/server.exe
 
 # Default rule
 all: setup_dirs $(TARGET)
+	@echo "✅ Build complete. Executable is located at $(TARGET)"
+	@echo "🚀 To run the server: ./$(TARGET)"
+	@echo "🧹 To clean up: make clean"
 
 # Create necessary directories
 setup_dirs:
-	@if not exist build mkdir build
-	@if not exist object mkdir object
+	@mkdir -p build object cache
 
 # Linking the final executable
 $(TARGET): $(OBJS)
@@ -34,4 +37,4 @@ object/%.o: src/%.cpp
 
 # Clean rule to remove compiled files
 clean:
-	del /Q object\*.o build\server.exe 2>nul || exit 0
+	rm -rf object build
