@@ -10,6 +10,7 @@ ifeq ($(OS),Windows_NT)
     RMDIR = rmdir /S /Q
     MKDIR = if not exist
     SEP = \\
+    LDPFLAG = -lws2_32
 
     MAKE_DIR = \
         $(MKDIR) build mkdir build && \
@@ -25,6 +26,7 @@ else
     RMDIR = rm -rf
     MKDIR = mkdir -p
     SEP = /
+    LDPFLAG = -lpthread
 
     MAKE_DIR = \
         $(MKDIR) build && \
@@ -35,7 +37,7 @@ else
 endif
 
 # Linker flags
-LDFLAGS = -lws2_32
+LDFLAGS = ${LDPFLAG}
 
 # Source and object files
 SRCS = $(wildcard src/*.cpp)
