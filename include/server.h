@@ -1,21 +1,22 @@
 #ifndef SERVER_H
 #define SERVER_H
 
-#include <winsock2.h>
+#include "platform.h"
 #include <string>
-#include <iostream>
-using namespace std;
 
 class HTTPServer {
     private:
         int port;
-        SOCKET server_socket;
+        SocketType server_socket;
     
     public:
         HTTPServer(int port);
         ~HTTPServer();
         void start();
-        void handle_client(SOCKET client_socket);
+        void handle_client(SocketType client_socket);
+        void handle_redis_command(SocketType client_socket, const std::string& request);
+        void handle_key_value_table(SocketType client_socket);
+        std::string extract_path(const std::string& request);
 };
     
 #endif

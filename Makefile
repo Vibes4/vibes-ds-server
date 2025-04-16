@@ -2,36 +2,64 @@
 CXX = g++
 
 # Compiler flags
-CXXFLAGS = -Iinclude -Wall
+CXXFLAGS = -std=c++17 -Iinclude -Wall
+
+# OS-specific setup
+ifeq ($(OS),Windows_NT)
+    RM = del /Q
+    RMDIR = rmdir /S /Q
+    MKDIR = if not exist
+    SEP = \\
+    LDPFLAG = -lws2_32
+
+    MAKE_DIR = \
+        $(MKDIR) build mkdir build && \
+        $(MKDIR) object mkdir object && \
+        $(MKDIR) cache mkdir cache
+
+    CLEAN_CMD = \
+        if exist build $(RMDIR) build && \
+        if exist object $(RMDIR) object && \
+        if exist cache $(RMDIR) cache
+else
+    RM = rm -f
+    RMDIR = rm -rf
+    MKDIR = mkdir -p
+    SEP = /
+    LDPFLAG = -lpthread
+
+    MAKE_DIR = \
+        $(MKDIR) build && \
+        $(MKDIR) object && \
+        $(MKDIR) cache
+
+    CLEAN_CMD = $(RMDIR) build object cache
+endif
 
 # Linker flags
-LDFLAGS = -lws2_32
+LDFLAGS = ${LDPFLAG}
 
-# Source files
-SRCS = $(wildcard src/*.cpp) 
-
-# Object files (store .o files in object/)
+# Source and object files
+SRCS = $(wildcard src/*.cpp)
 OBJS = $(SRCS:src/%.cpp=object/%.o)
 
-# Output executable
-TARGET = build/server.exe
+# Output
+TARGET = build$(SEP)server.exe
 
-# Default rule
+# Default
 all: setup_dirs $(TARGET)
+	@echo ✅ Build complete. Executable is at $(TARGET)
+	@echo 🚀 To run the server: ./$(TARGET)
+	@echo 🧹 To clean: make clean
 
-# Create necessary directories
 setup_dirs:
-	@if not exist build mkdir build
-	@if not exist object mkdir object
+	@$(MAKE_DIR)
 
-# Linking the final executable
 $(TARGET): $(OBJS)
 	$(CXX) $(OBJS) -o $(TARGET) $(LDFLAGS)
 
-# Compiling each .cpp file into a .o file
 object/%.o: src/%.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-# Clean rule to remove compiled files
 clean:
-	del /Q object\*.o build\server.exe 2>nul || exit 0
+	@$(CLEAN_CMD)

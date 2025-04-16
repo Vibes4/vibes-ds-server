@@ -14,10 +14,9 @@ private:
     unordered_map<string, string> store;
     mutex store_mutex; // Ensures thread safety
 
-    const string FILENAME = "data.db"; // File for persistence
+    const string FILENAME = "cache/key-value.db"; // File for persistence
 
-    void persistToDisk(const string& key, const string& value);
-    void removeFromDisk(const string& key);
+    void persistToDisk();
     void loadFromDisk();
 
 public:
