@@ -1,0 +1,11 @@
+# Keep the build context small and reproducible. The Dockerfile only copies
+# src/, include/, template/, and the Makefile, so nothing below is needed.
+.git
+client
+object
+build
+cache
+*.o
+*.exe
+docs
+*.md

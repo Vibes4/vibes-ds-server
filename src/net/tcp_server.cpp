@@ -1,5 +1,7 @@
 #include "net/tcp_server.h"
 
+#include "observability/logger.h"
+
 #include <cstdlib>
 #include <thread>
 
@@ -7,14 +9,14 @@ TcpServer::TcpServer(int port) {
 #ifdef PLATFORM_WINDOWS
     WSADATA wsa;
     if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
-        std::cerr << "WSAStartup failed.\n";
+        Logger::error("net", "WSAStartup failed");
         std::exit(1);
     }
 #endif
 
     listen_socket_ = socket(AF_INET, SOCK_STREAM, 0);
     if (listen_socket_ < 0) {
-        std::cerr << "Error creating socket.\n";
+        Logger::error("net", "failed to create socket");
         std::exit(1);
     }
 
@@ -30,12 +32,12 @@ TcpServer::TcpServer(int port) {
     address.sin_port = htons(port);
 
     if (bind(listen_socket_, (struct sockaddr*)&address, sizeof(address)) < 0) {
-        std::cerr << "Bind failed.\n";
+        Logger::error("net", "bind failed on port " + std::to_string(port));
         std::exit(1);
     }
 
     if (listen(listen_socket_, 5) < 0) {
-        std::cerr << "Listen failed.\n";
+        Logger::error("net", "listen failed");
         std::exit(1);
     }
 }
@@ -51,7 +53,7 @@ void TcpServer::run(const ConnectionHandler& handler) {
     while (true) {
         SocketType client = accept(listen_socket_, nullptr, nullptr);
         if (client < 0) {
-            std::cerr << "Accept failed.\n";
+            Logger::warn("net", "accept failed");
             continue;
         }
 

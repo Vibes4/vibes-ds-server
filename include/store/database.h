@@ -2,6 +2,8 @@
 #define STORE_DATABASE_H
 
 #include <chrono>
+#include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -18,9 +20,22 @@
 // Value *semantics* (integer math for INCR, concatenation for APPEND, the
 // return value of GETSET, ...) live in the command controllers, which compose
 // these primitives.
+//
+// For observability it keeps a few plain counters about its own access patterns
+// (cache hits/misses, keys removed by lazy expiry). These are not persistence or
+// threading concerns and require no dependency on other modules; StorageEngine
+// reads them via keyspace_stats() when assembling INFO.
 class Database
 {
 public:
+    // Lightweight access counters, gathered by StorageEngine for INFO.
+    struct KeyspaceStats
+    {
+        std::uint64_t hits = 0;
+        std::uint64_t misses = 0;
+        std::uint64_t lazy_expired = 0;
+    };
+
     // ---- value access ----
     // Returns the value, or nullopt if the key is absent or expired.
     std::optional<std::string> get_value(const std::string &key);
@@ -44,10 +59,14 @@ public:
     bool clear_expiry(const std::string &key);   // false if none/missing
 
     // ---- maintenance & persistence support (used by StorageEngine) ----
-    void purge_expired();                            // drop every expired key
+    std::size_t purge_expired();                     // drop expired keys; returns count removed
     std::unordered_map<std::string, std::string> snapshot();  // live key/value copy
     void load_raw(const std::string &key, std::string value); // insert without a TTL
     bool take_dirty();  // returns whether the data changed since the last call, and resets
+
+    // ---- observability ----
+    KeyspaceStats keyspace_stats() const;  // access counters
+    std::size_t approx_bytes() const;      // sum of live key + value byte lengths
 
 private:
     using Clock = std::chrono::steady_clock;
@@ -63,6 +82,11 @@ private:
 
     std::unordered_map<std::string, Entry> map_;
     bool dirty_ = false;  // set when on-disk content needs rewriting
+
+    // Access counters (guarded by StorageEngine's mutex, like map_ itself).
+    std::uint64_t hits_ = 0;
+    std::uint64_t misses_ = 0;
+    std::uint64_t lazy_expired_ = 0;
 };
 
 #endif  // STORE_DATABASE_H

@@ -55,15 +55,28 @@ void Database::purge_if_expired(const std::string &key)
     if (it != map_.end() && is_expired(it->second))
     {
         map_.erase(it);  // lazy expiry does not touch disk, so no dirty flag
+        ++lazy_expired_;
     }
 }
 
-void Database::purge_expired()
+std::size_t Database::purge_expired()
 {
+    // Neutral with respect to the access counters: the caller attributes the
+    // removals (the sweeper counts them separately from lazy expiry).
+    std::size_t removed = 0;
     for (auto it = map_.begin(); it != map_.end();)
     {
-        it = is_expired(it->second) ? map_.erase(it) : std::next(it);
+        if (is_expired(it->second))
+        {
+            it = map_.erase(it);
+            ++removed;
+        }
+        else
+        {
+            ++it;
+        }
     }
+    return removed;
 }
 
 // ---- value access --------------------------------------------------------
@@ -74,8 +87,10 @@ std::optional<std::string> Database::get_value(const std::string &key)
     const auto it = map_.find(key);
     if (it == map_.end())
     {
+        ++misses_;
         return std::nullopt;
     }
+    ++hits_;
     return it->second.value;
 }
 
@@ -116,7 +131,16 @@ bool Database::erase(const std::string &key)
 bool Database::contains(const std::string &key)
 {
     purge_if_expired(key);
-    return map_.count(key) > 0;
+    const bool found = map_.count(key) > 0;
+    if (found)
+    {
+        ++hits_;
+    }
+    else
+    {
+        ++misses_;
+    }
+    return found;
 }
 
 bool Database::rename(const std::string &from, const std::string &to)
@@ -135,7 +159,7 @@ bool Database::rename(const std::string &from, const std::string &to)
 
 std::vector<std::string> Database::keys(const std::string &pattern)
 {
-    purge_expired();
+    lazy_expired_ += purge_expired();
     std::vector<std::string> matches;
     for (const auto &[key, entry] : map_)
     {
@@ -150,7 +174,7 @@ std::vector<std::string> Database::keys(const std::string &pattern)
 
 std::optional<std::string> Database::random_key()
 {
-    purge_expired();
+    lazy_expired_ += purge_expired();
     if (map_.empty())
     {
         return std::nullopt;
@@ -160,7 +184,7 @@ std::optional<std::string> Database::random_key()
 
 size_t Database::size()
 {
-    purge_expired();
+    lazy_expired_ += purge_expired();
     return map_.size();
 }
 
@@ -217,7 +241,7 @@ bool Database::clear_expiry(const std::string &key)
 
 std::unordered_map<std::string, std::string> Database::snapshot()
 {
-    purge_expired();
+    lazy_expired_ += purge_expired();
     std::unordered_map<std::string, std::string> out;
     out.reserve(map_.size());
     for (const auto &[key, entry] : map_)
@@ -237,4 +261,24 @@ bool Database::take_dirty()
     const bool was_dirty = dirty_;
     dirty_ = false;
     return was_dirty;
+}
+
+// ---- observability -------------------------------------------------------
+
+Database::KeyspaceStats Database::keyspace_stats() const
+{
+    return {hits_, misses_, lazy_expired_};
+}
+
+std::size_t Database::approx_bytes() const
+{
+    std::size_t total = 0;
+    for (const auto &[key, entry] : map_)
+    {
+        if (!is_expired(entry))
+        {
+            total += key.size() + entry.value.size();
+        }
+    }
+    return total;
 }

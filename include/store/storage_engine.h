@@ -1,6 +1,7 @@
 #ifndef STORE_STORAGE_ENGINE_H
 #define STORE_STORAGE_ENGINE_H
 
+#include "observability/statistics.h"
 #include "persistence/persistence_manager.h"
 #include "store/database.h"
 
@@ -9,15 +10,14 @@
 #include <condition_variable>
 #include <memory>
 #include <mutex>
-#include <string>
 #include <thread>
 #include <type_traits>
-#include <unordered_map>
 
 // The thread-safe, persistent database engine: the front door to the keyspace.
 //
-// StorageEngine owns the single Database, the single mutex that guards it, and a
-// PersistenceManager (an abstraction -- it never touches files directly).
+// StorageEngine owns the single Database, the single mutex that guards it, a
+// PersistenceManager (an abstraction -- it never touches files directly), the
+// background TTL sweeper, and the Statistics counters.
 // Command controllers never reach the Database themselves; they pass a function
 // to with_lock(), which runs it under the lock and, if it changed the data,
 // hands the new dataset to the persistence strategy. This gives every command
@@ -45,12 +45,12 @@ public:
         if constexpr (std::is_void_v<Result>)
         {
             fn(db_);
-            commit_if_dirty();
+            finish_operation();
         }
         else
         {
             Result result = fn(db_);
-            commit_if_dirty();
+            finish_operation();
             return result;
         }
     }
@@ -59,18 +59,22 @@ public:
     void save();                        // force a durable write now (SAVE/BGSAVE)
     long long last_save_epoch() const;  // unix seconds of the last save (LASTSAVE)
 
-    // Snapshot of all live key/value pairs (used by INFO and the web UI).
-    std::unordered_map<std::string, std::string> entries();
+    // ---- observability ----
+    // Records that a command finished, with how long it took (for latency stats).
+    void record_command(std::chrono::microseconds latency);
+    // Assembles a consistent snapshot of all counters for the INFO command.
+    InfoSnapshot info_snapshot();
 
 private:
-    void restore();          // load persisted data into db_ (constructor only)
-    void commit_if_dirty();  // persist iff db_ changed; assumes mutex_ is held
-    void persist_locked();   // hand the current dataset to persistence_; assumes mutex_ is held
+    void restore();           // load persisted data into db_ (constructor only)
+    void finish_operation();  // count read/write and persist iff dirty; assumes mutex_ is held
+    void persist_locked();    // hand the current dataset to persistence_; assumes mutex_ is held
     void start_sweeper();
-    void sweep_loop();        // background active-expiration thread body
+    void sweep_loop();         // background active-expiration thread body
 
     Database db_;
     std::unique_ptr<PersistenceManager> persistence_;
+    Statistics stats_;
     std::mutex mutex_;  // guards db_ and last_save_
     std::chrono::system_clock::time_point last_save_;
 

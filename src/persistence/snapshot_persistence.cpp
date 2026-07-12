@@ -1,7 +1,8 @@
 #include "persistence/snapshot_persistence.h"
 
+#include "observability/logger.h"
+
 #include <fstream>
-#include <iostream>
 #include <utility>
 
 SnapshotPersistence::SnapshotPersistence(std::string file_path)
@@ -32,7 +33,7 @@ void SnapshotPersistence::save(const std::vector<Record> &records)
     std::ofstream file(file_path_, std::ios::trunc);
     if (!file.is_open())
     {
-        std::cerr << "Error: could not open " << file_path_ << " for writing.\n";
+        Logger::error("persistence", "could not open " + file_path_ + " for writing");
         return;
     }
 

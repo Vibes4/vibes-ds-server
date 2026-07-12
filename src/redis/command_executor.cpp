@@ -1,5 +1,6 @@
 #include "redis/command_executor.h"
 
+#include "observability/logger.h"
 #include "redis/commands/expiration_commands.h"
 #include "redis/commands/key_commands.h"
 #include "redis/commands/numeric_commands.h"
@@ -9,6 +10,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <sstream>
 
 namespace
@@ -97,18 +99,37 @@ void CommandExecutor::register_command(const std::string &name,
 
 CommandResult CommandExecutor::execute(const std::string &command_line)
 {
+    const auto started = std::chrono::steady_clock::now();
     const std::vector<std::string> tokens = tokenize(command_line);
-    if (tokens.empty())
-    {
-        return {false, "empty command"};
-    }
 
-    const auto it = commands_.find(to_upper(tokens.front()));
-    if (it == commands_.end())
-    {
-        return {false, "unknown command '" + tokens.front() + "'"};
-    }
+    // Tokenise -> look up -> execute. The result is computed first so we can
+    // time and log every path (empty, unknown, ok, error) uniformly below.
+    const CommandResult result = [&]() -> CommandResult {
+        if (tokens.empty())
+        {
+            return {false, "empty command"};
+        }
+        const auto it = commands_.find(to_upper(tokens.front()));
+        if (it == commands_.end())
+        {
+            return {false, "unknown command '" + tokens.front() + "'"};
+        }
+        const std::vector<std::string> args(tokens.begin() + 1, tokens.end());
+        return it->second->execute(store_, args);
+    }();
 
-    const std::vector<std::string> args(tokens.begin() + 1, tokens.end());
-    return it->second->execute(store_, args);
+    const auto latency = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - started);
+    store_.record_command(latency);
+
+    const std::string name = tokens.empty() ? "(empty)" : tokens.front();
+    if (result.ok)
+    {
+        Logger::debug("command", name + " (" + std::to_string(latency.count()) + "us)");
+    }
+    else
+    {
+        Logger::warn("command", name + " failed: " + result.message);
+    }
+    return result;
 }

@@ -1,5 +1,7 @@
 #include "http/http_response.h"
 
+#include "observability/logger.h"
+
 #include <utility>
 
 HttpResponse::HttpResponse(std::string status, std::string body,
@@ -49,11 +51,7 @@ void write_response(SocketType client_socket, const HttpResponse &response)
                               payload.size() - total_sent, 0);
         if (sent < 0)
         {
-#ifdef PLATFORM_WINDOWS
-            std::cerr << "Error sending response: " << WSAGetLastError() << "\n";
-#else
-            std::perror("Error sending response");
-#endif
+            Logger::error("http", "failed to send response to client");
             return;
         }
         total_sent += static_cast<size_t>(sent);

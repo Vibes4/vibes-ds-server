@@ -1,7 +1,10 @@
 #include "store/storage_engine.h"
 
+#include "observability/logger.h"
 #include "persistence/snapshot_persistence.h"
 
+#include <cstddef>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -41,10 +44,13 @@ StorageEngine::~StorageEngine()
 
 void StorageEngine::restore()
 {
+    std::size_t count = 0;
     for (const auto &record : persistence_->load())
     {
         db_.load_raw(record.key, record.value);
+        ++count;
     }
+    Logger::info("persistence", "restored " + std::to_string(count) + " key(s) from disk");
 }
 
 void StorageEngine::persist_locked()
@@ -55,13 +61,22 @@ void StorageEngine::persist_locked()
         records.push_back({key, value});
     }
     persistence_->save(records);
+    stats_.record_persistence();
+    Logger::debug("persistence", "saved " + std::to_string(records.size()) + " key(s)");
 }
 
-void StorageEngine::commit_if_dirty()
+void StorageEngine::finish_operation()
 {
+    // Classify the just-completed operation: it is a write if it changed the
+    // data (which also triggers persistence), otherwise a read.
     if (db_.take_dirty())
     {
         persist_locked();
+        stats_.record_write();
+    }
+    else
+    {
+        stats_.record_read();
     }
 }
 
@@ -70,6 +85,7 @@ void StorageEngine::save()
     std::lock_guard<std::mutex> lock(mutex_);
     persist_locked();
     last_save_ = std::chrono::system_clock::now();
+    Logger::info("persistence", "explicit save completed");
 }
 
 long long StorageEngine::last_save_epoch() const
@@ -79,9 +95,37 @@ long long StorageEngine::last_save_epoch() const
         .count();
 }
 
-std::unordered_map<std::string, std::string> StorageEngine::entries()
+// ---- observability -------------------------------------------------------
+
+void StorageEngine::record_command(std::chrono::microseconds latency)
 {
-    return with_lock([](Database &db) { return db.snapshot(); });
+    stats_.record_command(latency);
+}
+
+InfoSnapshot StorageEngine::info_snapshot()
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    InfoSnapshot snap;
+    // Server
+    snap.uptime_seconds = stats_.uptime_seconds();
+    snap.start_epoch = stats_.start_epoch();
+    // Stats owned by the engine
+    snap.total_commands = stats_.commands();
+    snap.total_reads = stats_.reads();
+    snap.total_writes = stats_.writes();
+    snap.persistence_ops = stats_.persistence_ops();
+    snap.expired_sweeper = stats_.sweeper_expired();
+    snap.avg_command_latency_us = stats_.average_latency_us();
+    snap.last_persistence_epoch = stats_.last_persistence_epoch();
+    // Memory + keyspace (from Database; size() also purges, so read counters after)
+    snap.key_count = db_.size();
+    snap.dataset_bytes = db_.approx_bytes();
+    const auto keyspace = db_.keyspace_stats();
+    snap.cache_hits = keyspace.hits;
+    snap.cache_misses = keyspace.misses;
+    snap.expired_lazy = keyspace.lazy_expired;
+    return snap;
 }
 
 // ---- active expiration ---------------------------------------------------
@@ -103,7 +147,17 @@ void StorageEngine::sweep_loop()
         {
             break;
         }
-        std::lock_guard<std::mutex> lock(mutex_);
-        db_.purge_expired();
+
+        std::size_t removed = 0;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            removed = db_.purge_expired();
+        }
+        if (removed > 0)
+        {
+            stats_.record_sweeper_expired(removed);
+            Logger::info("ttl",
+                         "sweeper removed " + std::to_string(removed) + " expired key(s)");
+        }
     }
 }
