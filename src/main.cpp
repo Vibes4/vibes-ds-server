@@ -1,6 +1,7 @@
-#include<server.h>
-int main(){
-    HTTPServer server(8080);
+#include "server/server.h"
+
+int main() {
+    HttpServer server(8080);
     server.start();
     return 0;
 }

@@ -39,9 +39,12 @@ endif
 # Linker flags
 LDFLAGS = ${LDPFLAG}
 
-# Source and object files
-SRCS = $(wildcard src/*.cpp)
-OBJS = $(SRCS:src/%.cpp=object/%.o)
+# Source and object files.
+# Sources live in src/ and one level of subdirectories (src/net, src/http, ...).
+# VPATH lets make locate each .cpp by name, so object files stay flat in object/.
+SRCS = $(wildcard src/*.cpp) $(wildcard src/*/*.cpp) $(wildcard src/*/*/*.cpp)
+VPATH = $(sort $(dir $(SRCS)))
+OBJS = $(patsubst %.cpp,object/%.o,$(notdir $(SRCS)))
 
 # Output
 TARGET = build$(SEP)server.exe
@@ -58,7 +61,7 @@ setup_dirs:
 $(TARGET): $(OBJS)
 	$(CXX) $(OBJS) -o $(TARGET) $(LDFLAGS)
 
-object/%.o: src/%.cpp
+object/%.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:

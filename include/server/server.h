@@ -1,22 +1,26 @@
-#ifndef SERVER_H
-#define SERVER_H
+#ifndef SERVER_SERVER_H
+#define SERVER_SERVER_H
 
-#include "platform.h"
-#include <string>
+#include "http/router.h"
+#include "net/tcp_server.h"
+#include "redis/redis_service.h"
 
-class HTTPServer {
-    private:
-        int port;
-        SocketType server_socket;
-    
-    public:
-        HTTPServer(int port);
-        ~HTTPServer();
-        void start();
-        void handleRequest(SocketType client_socket);
-        void handle_redis_command(SocketType client_socket, const std::string& request);
-        void handle_key_value_table(SocketType client_socket);
-        std::string extract_path(const std::string& request);
+// The application server. It ties the layers together: TcpServer accepts
+// connections, each request is parsed as HTTP, the Router dispatches it to a
+// handler, and the handler's response is written back. All protocol and
+// command logic lives in the layers below; this class is just the wiring.
+class HttpServer {
+public:
+    explicit HttpServer(int port);
+    void start();
+
+private:
+    void handle_connection(SocketType client_socket);
+
+    int port_;
+    TcpServer tcp_;
+    Router router_;
+    RedisService redis_;
 };
-    
-#endif
+
+#endif  // SERVER_SERVER_H
