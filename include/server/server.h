@@ -13,7 +13,7 @@ class HTTPServer {
         HTTPServer(int port);
         ~HTTPServer();
         void start();
-        void handle_client(SocketType client_socket);
+        void handleRequest(SocketType client_socket);
         void handle_redis_command(SocketType client_socket, const std::string& request);
         void handle_key_value_table(SocketType client_socket);
         std::string extract_path(const std::string& request);

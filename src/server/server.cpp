@@ -55,11 +55,11 @@ void HTTPServer::start() {
             continue;
         }
 
-        std::thread(&HTTPServer::handle_client, this, client_socket).detach();
+        std::thread(&HTTPServer::handleRequest, this, client_socket).detach();
     }
 }
 
-void HTTPServer::handle_client(SocketType client_socket) {
+void HTTPServer::handleRequest(SocketType client_socket) {
     char buffer[2048] = {0};
     int bytes_received = recv(client_socket, buffer, sizeof(buffer), 0);
     if (bytes_received <= 0) {
