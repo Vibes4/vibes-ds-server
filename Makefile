@@ -35,7 +35,7 @@ else
 endif
 
 # Linker flags
-LDFLAGS = -lws2_32
+LDFLAGS = -lm
 
 # Source and object files
 SRCS = $(wildcard src/*.cpp)
