@@ -17,28 +17,43 @@ npm install vibes-ds-client
 
 ## Usage
 
+Commands are organized into resource groups that mirror the server's command
+categories: `strings`, `numeric`, `expiration`, `keyspace`, `server`,
+`persistence`.
+
 ```ts
 import { VibesClient } from "vibes-ds-client";
 
 const client = new VibesClient({ host: "localhost", port: 8080 });
 // or: new VibesClient({ baseUrl: "http://localhost:8080" });
 
-await client.set("name", "Vaibu");
-await client.get("name"); // "Vaibu"
-await client.get("missing"); // null
+await client.strings.set("name", "Vaibu");
+await client.strings.get("name"); // "Vaibu"
+await client.strings.get("missing"); // null
 
-await client.incr("counter"); // 1
-await client.expire("counter", 60); // true
-await client.ttl("counter"); // ~60
+await client.numeric.incr("counter"); // 1
+await client.expiration.expire("counter", 60); // true
+await client.expiration.ttl("counter"); // ~60
 
-await client.mset({ a: "1", b: "2" });
-await client.mget("a", "b", "ghost"); // ["1", "2", null]
+await client.strings.mset({ a: "1", b: "2" });
+await client.strings.mget("a", "b", "ghost"); // ["1", "2", null]
 
-await client.keys("user:*"); // string[]
-await client.info(); // grouped stats text
+await client.keyspace.keys("user:*"); // string[]
+await client.server.info(); // grouped stats text
+await client.persistence.save();
 
 // Escape hatch for anything without a dedicated method:
 await client.command("SET", "k", "v"); // "OK"
+```
+
+Resource modules can also be used à la carte with a shared `Transport`:
+
+```ts
+import { Transport, StringCommands } from "vibes-ds-client";
+
+const transport = new Transport({ baseUrl: "http://localhost:8080" });
+const strings = new StringCommands(transport);
+await strings.set("k", "v");
 ```
 
 ### Errors
@@ -70,24 +85,30 @@ this before sending and throws `VibesArgumentError` with a clear message.
 
 ## API
 
-Strings: `set` `get` `del` `exists` `mset` `mget` `append` `strlen` `getset`
-`setnx` `setex` `getdel`
-Numeric: `incr` `incrby` `decr` `decrby`
-Expiration: `expire` `pexpire` `ttl` `pttl` `persist`
-Keyspace: `keys` `scan` `type` `rename` `randomKey`
-Server: `ping` `echo` `info` `dbsize` `flushdb` `flushall`
-Persistence: `save` `bgsave` `lastsave`
-Raw: `command(...args)`
+| Group                  | Methods                                                                          |
+| ---------------------- | ------------------------------------------------------------------------------- |
+| `client.strings`       | `set` `get` `del` `exists` `mset` `mget` `append` `strlen` `getset` `setnx` `setex` `getdel` |
+| `client.numeric`       | `incr` `incrby` `decr` `decrby`                                                  |
+| `client.expiration`    | `expire` `pexpire` `ttl` `pttl` `persist`                                        |
+| `client.keyspace`      | `keys` `scan` `type` `rename` `randomKey`                                        |
+| `client.server`        | `ping` `echo` `info` `dbsize` `flushdb` `flushall`                               |
+| `client.persistence`   | `save` `bgsave` `lastsave`                                                       |
+| `client`               | `command(...args)` — raw escape hatch                                            |
 
 ## Development
 
 ```bash
 npm install
-npm run build      # bundle ESM + CJS + d.ts into dist/ (tsup)
-npm run typecheck  # tsc --noEmit
-npm test           # integration tests (requires Docker)
+npm run build             # bundle ESM + CJS + d.ts into dist/ (tsup)
+npm run typecheck         # tsc --noEmit
+npm run test:unit         # pure unit tests (fast, no Docker)
+npm run test:integration  # integration tests (requires Docker)
+npm test                  # unit + integration
 ```
 
-The test suite uses [`testcontainers`](https://testcontainers.com) to build the
-server image from the repository `Dockerfile`, start it, and exercise the client
-against the live HTTP endpoint. **Docker must be running.**
+Unit tests cover the pure encoding/parsing helpers and client-side validation
+(no server, no mocking). Integration tests use
+[`testcontainers`](https://testcontainers.com) to build the server image from
+the repository `Dockerfile`, start **one** container shared by all integration
+files, and exercise the client against the live HTTP endpoint. **Docker must be
+running** for `test:integration`.
