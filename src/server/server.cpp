@@ -1,11 +1,12 @@
 #include "server/server.h"
 
-#include "app/routes.h"
 #include "http/http_request.h"
 #include "http/http_response.h"
 
-HttpServer::HttpServer(int port) : port_(port), tcp_(port) {
-    register_routes(router_, redis_);
+HttpServer::HttpServer(int port)
+    : port_(port), tcp_(port), redis_controller_(executor_) {
+    redis_controller_.register_routes(router_);
+    health_controller_.register_routes(router_);
 }
 
 void HttpServer::start() {

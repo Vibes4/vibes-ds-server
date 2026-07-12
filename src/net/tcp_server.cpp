@@ -18,6 +18,12 @@ TcpServer::TcpServer(int port) {
         std::exit(1);
     }
 
+    // Allow the server to rebind immediately after a restart instead of waiting
+    // out the previous socket's TIME_WAIT period.
+    int reuse = 1;
+    setsockopt(listen_socket_, SOL_SOCKET, SO_REUSEADDR,
+               reinterpret_cast<const char*>(&reuse), sizeof(reuse));
+
     sockaddr_in address{};
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY;
