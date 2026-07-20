@@ -9,7 +9,7 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | **v0.4** | TTL                     | First real Redis feature    | ✅ Done                       |
 | **v0.5** | AOF persistence         | Learn durability            | ✅ Done                       |
 | **v0.6** | RESP protocol           | Compatible with `redis-cli` | ⬜ Not started               |
-| **v0.7** | Benchmarks              | Measure performance         | ⬜ Not started               |
+| **v0.7** | Benchmarks              | Measure performance         | ✅ Done                       |
 | **v0.8** | Hashes                  | New data structures         | ⬜ Not started               |
 | **v0.9** | Lists                   | More complex storage        | ⬜ Not started               |
 | **v1.0** | Transactions            | Atomic operations           | ⬜ Not started               |
@@ -55,10 +55,16 @@ These were built to support the roadmap rather than being numbered milestones:
   `SAVE`/`BGSAVE` or automatically past a threshold. `Database` gained a change
   journal (`Mutation`s) that AOF logs. See `docs/ARCHITECTURE.md`.
 
+- **v0.7 — Done.** A benchmark harness (`client/bench`, `npm run bench`) drives
+  the real server in Docker through the client and reports SET/GET throughput
+  and latency percentiles per persistence strategy. It confirms AOF is ~2x
+  faster on writes than snapshot (append vs whole-file rewrite), with the gap
+  widening as the key count grows; reads are comparable.
+
 ## Summary
 
-- **Fully done:** v0.2, v0.4, v0.5
+- **Fully done:** v0.2, v0.4, v0.5, v0.7
 - **Partial / prepared:** v0.3 (Database, no Value object — deferred until Hashes)
-- **Not started:** v0.6 – v1.2
+- **Not started:** v0.6, v0.8 – v1.2
 
-Roughly **3 of 11 versions fully complete**, with v0.3's foundation in place.
+Roughly **4 of 11 versions fully complete**, with v0.3's foundation in place.

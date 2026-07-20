@@ -112,3 +112,15 @@ Unit tests cover the pure encoding/parsing helpers and client-side validation
 the repository `Dockerfile`, start **one** container shared by all integration
 files, and exercise the client against the live HTTP endpoint. **Docker must be
 running** for `test:integration`.
+
+## Benchmark
+
+```bash
+npm run bench     # requires Docker
+```
+
+Drives the real server (in Docker) through the client and reports SET/GET
+throughput and latency percentiles **once per persistence strategy**, making the
+snapshot-vs-AOF write trade-off visible (snapshot rewrites the whole file per
+write; AOF appends one line). Tunables via env: `BENCH_KEYS`,
+`BENCH_CONCURRENCY`, `BENCH_MODES` (e.g. `BENCH_MODES=snapshot,aof`).
