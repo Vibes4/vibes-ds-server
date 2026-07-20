@@ -36,6 +36,25 @@ public:
         std::uint64_t lazy_expired = 0;
     };
 
+    // A value/key change recorded during the current operation. StorageEngine
+    // drains these after each committed write and hands them to the persistence
+    // layer (an append-only strategy logs them; a snapshot strategy ignores
+    // them). TTL changes and lazy expiry are not recorded -- expiry is in-memory
+    // only. This journals the same changes that set the dirty flag.
+    struct Mutation
+    {
+        enum class Kind
+        {
+            Set,    // `key` set to `value`
+            Delete, // `key` removed
+            Clear,  // every key removed
+        };
+
+        Kind kind;
+        std::string key;
+        std::string value;
+    };
+
     // ---- value access ----
     // Returns the value, or nullopt if the key is absent or expired.
     std::optional<std::string> get_value(const std::string &key);
@@ -63,6 +82,7 @@ public:
     std::unordered_map<std::string, std::string> snapshot();  // live key/value copy
     void load_raw(const std::string &key, std::string value); // insert without a TTL
     bool take_dirty();  // returns whether the data changed since the last call, and resets
+    std::vector<Mutation> take_mutations();  // drains the change journal
 
     // ---- observability ----
     KeyspaceStats keyspace_stats() const;  // access counters
@@ -82,6 +102,7 @@ private:
 
     std::unordered_map<std::string, Entry> map_;
     bool dirty_ = false;  // set when on-disk content needs rewriting
+    std::vector<Mutation> mutations_;  // change journal for the current operation
 
     // Access counters (guarded by StorageEngine's mutex, like map_ itself).
     std::uint64_t hits_ = 0;

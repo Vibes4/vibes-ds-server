@@ -66,11 +66,11 @@ public:
     InfoSnapshot info_snapshot();
 
 private:
-    void restore();           // load persisted data into db_ (constructor only)
-    void finish_operation();  // count read/write and persist iff dirty; assumes mutex_ is held
-    void persist_locked();    // hand the current dataset to persistence_; assumes mutex_ is held
+    void restore();                    // load persisted data into db_ (constructor only)
+    void finish_operation();           // count read/write and persist iff dirty; assumes mutex_ is held
+    std::vector<Record> current_dataset();  // build records from db_; assumes mutex_ is held
     void start_sweeper();
-    void sweep_loop();         // background active-expiration thread body
+    void sweep_loop();                 // background active-expiration thread body
 
     Database db_;
     std::unique_ptr<PersistenceManager> persistence_;

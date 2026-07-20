@@ -28,11 +28,12 @@ HTTP client
      │  Command::execute(engine, args)
      ▼
 [ store/ ]        StorageEngine        thread-safe: with_lock(fn(Database&))
-                  Database             pure in-memory keyspace + TTL
-     │  save(records) when data changed
+                  Database             pure in-memory keyspace + TTL + change journal
+     │  record(ops, dataset) when data changed
      ▼
-[ persistence/ ]  PersistenceManager   interface
+[ persistence/ ]  PersistenceManager   interface (load / record / checkpoint)
                   SnapshotPersistence  impl — rewrites cache/key-value.db
+                  AofPersistence       impl — appends ops to a log, replays on load
 
   cross-cutting:
 [ observability/ ] Logger              centralized, thread-safe, leveled logging
@@ -54,8 +55,8 @@ layers. `Logger` is called from `net`, `server`, `redis`, `store`, and
 | `server/`      | `HttpServer`                                             | The wiring root: reads bytes → `HttpRequest::parse` → `Router::route` → `write_response`. Owns the `Router`, the `CommandExecutor`, and the controllers, and registers each controller's routes.                     |
 | `app/`         | `RedisController`, `HealthController` (`controllers/`)   | The **controllers**: thin HTTP adapters. `RedisController` handles `/redis` (pull the `cmd` param, call the executor, wrap the result). `HealthController` handles `/ping`. Each registers its own routes.            |
 | `redis/`       | `CommandExecutor`, `Command`, `commands/*`               | `CommandExecutor` tokenizes a command line, looks the command up in its registry, and dispatches to a `Command`. It holds no business logic. Each command (`SET`, `INCR`, `EXPIRE`, …) is its own class.             |
-| `store/`       | `StorageEngine`, `Database`                              | `Database` is the pure in-memory keyspace (a string map with per-key TTL and glob matching) — no locking, no I/O. `StorageEngine` is the thread-safe engine that owns the `Database`, the mutex, the `PersistenceManager`, the TTL sweeper, and the `Statistics`. |
-| `persistence/` | `PersistenceManager`, `SnapshotPersistence`, `Record`    | Durability, behind an interface. `StorageEngine` depends only on `PersistenceManager`; `SnapshotPersistence` is the current implementation (full-file rewrite).                                                      |
+| `store/`       | `StorageEngine`, `Database`                              | `Database` is the pure in-memory keyspace (a string map with per-key TTL and glob matching) — no locking, no I/O. It keeps a dirty flag and a change journal (`Mutation`s) for persistence. `StorageEngine` is the thread-safe engine that owns the `Database`, the mutex, the `PersistenceManager`, the TTL sweeper, and the `Statistics`. |
+| `persistence/` | `PersistenceManager`, `SnapshotPersistence`, `AofPersistence`, `Record`, `WriteOp` | Durability, behind an interface (`load` / `record` / `checkpoint`). `StorageEngine` depends only on `PersistenceManager` and picks a strategy at startup (env `VIBES_PERSISTENCE=snapshot\|aof`). **Snapshot** rewrites the whole dataset on every change; **AOF** appends each mutation to a log, replays it on load, and compacts on `checkpoint` (or automatically past a threshold). |
 | `observability/` | `Logger`, `Statistics`, `InfoSnapshot`                 | Cross-cutting tooling. `Logger` is a centralized, thread-safe, leveled logger used everywhere. `Statistics` holds atomic server counters (owned by `StorageEngine`); `StorageEngine::info_snapshot()` combines them with `Database`'s access counters into an `InfoSnapshot` for the `INFO` command. |
 
 ## The flow of a request
@@ -68,8 +69,8 @@ Take `GET /redis?cmd=SET+name+Vaibu`:
 4. **app (controller)** — `RedisController::handle_command` reads `request.param("cmd")` and calls `CommandExecutor::execute("SET name Vaibu")`.
 5. **redis** — `CommandExecutor` tokenizes to `["SET", "name", "Vaibu"]`, upper-cases `SET`, finds `SetCommand` in its registry, and calls `execute(engine, ["name", "Vaibu"])`.
 6. **redis (command)** — `SetCommand` validates argument count and runs its logic inside `engine.with_lock([&](Database& db){ db.set_value("name", "Vaibu"); })`, returning `{ok: true, "OK"}`.
-7. **store** — `with_lock` runs the function under the mutex, then classifies the operation: `set_value` marked the keyspace dirty, so it counts a **write** (`Statistics::record_write`), builds the current dataset, and calls `persistence_->save(records)`. A read would count a **read** and skip persistence.
-8. **persistence** — `SnapshotPersistence::save` rewrites `cache/key-value.db`; `StorageEngine` records a persistence op and logs it.
+7. **store** — `with_lock` runs the function under the mutex, then classifies the operation: `set_value` marked the keyspace dirty and journaled a `Set` mutation, so it counts a **write** (`Statistics::record_write`) and calls `persistence_->record(ops, dataset)`, where `dataset` lazily yields the full state. A read would count a **read** and skip persistence.
+8. **persistence** — the chosen strategy handles the write: `SnapshotPersistence` ignores `ops` and rewrites `cache/key-value.db`; `AofPersistence` appends `SET name Vaibu` to the log and fsyncs. `StorageEngine` records a persistence op.
 9. **observability** — back in `CommandExecutor`, the elapsed time is measured and fed to `Statistics::record_command`, and the outcome is logged (`Logger::debug` on success, `Logger::warn` on error).
 10. The `CommandResult` bubbles back up: `RedisController` turns `{true, "OK"}` into `HttpResponse::ok("OK")`, and `server` serializes it back over the socket.
 
@@ -91,14 +92,24 @@ dirty, so step 7 counts a read and skips persistence.
 
 - **Persistence is a strategy, not a hard-coded file write.** `StorageEngine`
   depends on the `PersistenceManager` interface and receives an implementation by
-  constructor injection (the default constructor installs `SnapshotPersistence`).
-  Swapping or adding a strategy is a localized change behind the interface; no
-  engine, command, or transport code changes.
+  constructor injection; the default constructor picks one from the environment
+  (`VIBES_PERSISTENCE=snapshot|aof`). Snapshot and AOF are interchangeable
+  behind the interface — no engine, command, or transport code changes.
 
-- **Write-through with a dirty flag.** Mutating primitives on `Database` set a
-  `dirty_` flag; `StorageEngine` persists only when a committed operation actually
-  changed the data. TTL changes and lazy expiry do **not** dirty the keyspace,
-  matching the fact that expiry is in-memory only.
+- **Snapshot vs. AOF.** The interface's `record(ops, dataset)` serves both
+  without either paying the other's cost: snapshot ignores `ops` and rewrites
+  the full `dataset`; AOF appends `ops` and never invokes the (lazy) `dataset`,
+  so the full snapshot is not built on the append-only hot path. `checkpoint`
+  is a full snapshot for the snapshot strategy and a log compaction for AOF.
+
+- **Write-through with a dirty flag and a change journal.** Mutating primitives
+  on `Database` set a `dirty_` flag and append a `Mutation` to a journal;
+  `StorageEngine` drains both after each committed op, persisting (and counting a
+  write) only when something changed. The journal is what AOF logs. TTL changes
+  and lazy expiry do **not** dirty the keyspace or journal — expiry is in-memory
+  only. (Consequence for AOF: a key that expired but was never overwritten or
+  deleted reappears without its TTL after a restart, until the next compaction
+  drops it.)
 
 - **Expiration is in-memory only.** TTLs are not written to disk, so a key
   reloaded after a restart comes back without its TTL. Expired keys are removed
@@ -128,17 +139,21 @@ from `Statistics` (commands, reads/writes, persistence ops, sweeper expirations,
 average latency, uptime) combined with `Database` figures (key count, approximate
 dataset bytes, cache hits/misses, lazy expirations).
 
-## Extending persistence (e.g. AOF later)
+## Persistence strategies
 
-The append-only-file strategy is intentionally **not** implemented yet; the
-architecture is prepared for it:
+Two strategies implement `PersistenceManager`; select at startup with
+`VIBES_PERSISTENCE`:
 
-1. Add `AofPersistence : public PersistenceManager` under `persistence/`.
-2. If AOF needs per-mutation granularity, add an incremental hook (e.g.
-   `append(op)`) to the `PersistenceManager` interface. `SnapshotPersistence`
-   would ignore it and keep rewriting on `save()`; `StorageEngine` would call it
-   from `finish_operation`.
-3. Choose the strategy at the composition root and inject it via
-   `StorageEngine(std::unique_ptr<PersistenceManager>)`.
+- **Snapshot** (`snapshot`, default) — rewrites `cache/key-value.db` (one
+  `key value` line per key) on every change. Simple and always consistent;
+  O(N) per write. Path: `VIBES_SNAPSHOT_PATH`.
+- **AOF** (`aof`) — appends each mutation to `cache/appendonly.aof` as a
+  `SET`/`DEL`/`CLR` line and fsyncs (durability policy `Always`/`Never`);
+  replays the log on startup. Compacts to one `SET` per live key on
+  `checkpoint` (the `SAVE`/`BGSAVE` commands) or automatically once the log
+  passes a threshold. Path: `VIBES_AOF_PATH`.
 
-Nothing above the `store/` layer is affected by any of this.
+Adding a third strategy (e.g. remote/replicated) is a localized change: implement
+`PersistenceManager` and construct it in `make_default_persistence()` (or inject
+it via `StorageEngine(std::unique_ptr<PersistenceManager>)`). Nothing above the
+`store/` layer is affected.

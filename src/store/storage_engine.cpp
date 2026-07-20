@@ -1,21 +1,65 @@
 #include "store/storage_engine.h"
 
 #include "observability/logger.h"
+#include "persistence/aof_persistence.h"
 #include "persistence/snapshot_persistence.h"
 
 #include <cstddef>
+#include <cstdlib>
 #include <string>
 #include <utility>
 #include <vector>
 
 namespace
 {
-// Where the default snapshot strategy stores its file.
-const char *const kDefaultSnapshotPath = "cache/key-value.db";
+
+// Translates Database's change journal into persistence write ops.
+std::vector<WriteOp> to_write_ops(const std::vector<Database::Mutation> &mutations)
+{
+    std::vector<WriteOp> ops;
+    ops.reserve(mutations.size());
+    for (const auto &mutation : mutations)
+    {
+        switch (mutation.kind)
+        {
+        case Database::Mutation::Kind::Set:
+            ops.push_back({WriteOp::Type::Set, mutation.key, mutation.value});
+            break;
+        case Database::Mutation::Kind::Delete:
+            ops.push_back({WriteOp::Type::Delete, mutation.key, {}});
+            break;
+        case Database::Mutation::Kind::Clear:
+            ops.push_back({WriteOp::Type::Clear, {}, {}});
+            break;
+        }
+    }
+    return ops;
+}
+
+std::string env_or(const char *name, const std::string &fallback)
+{
+    const char *value = std::getenv(name);
+    return value != nullptr ? std::string(value) : fallback;
+}
+
+// Chooses the persistence strategy from the environment:
+//   VIBES_PERSISTENCE = snapshot (default) | aof
+//   VIBES_SNAPSHOT_PATH (default cache/key-value.db)
+//   VIBES_AOF_PATH      (default cache/appendonly.aof)
+std::unique_ptr<PersistenceManager> make_default_persistence()
+{
+    if (env_or("VIBES_PERSISTENCE", "snapshot") == "aof")
+    {
+        Logger::info("persistence", "using append-only-file (AOF) strategy");
+        return std::make_unique<AofPersistence>(env_or("VIBES_AOF_PATH", "cache/appendonly.aof"));
+    }
+    Logger::info("persistence", "using snapshot strategy");
+    return std::make_unique<SnapshotPersistence>(env_or("VIBES_SNAPSHOT_PATH", "cache/key-value.db"));
+}
+
 } // namespace
 
-StorageEngine::StorageEngine()
-    : StorageEngine(std::make_unique<SnapshotPersistence>(kDefaultSnapshotPath))
+StorageEngine::StorageEngine() : StorageEngine(make_default_persistence())
 {
 }
 
@@ -53,39 +97,43 @@ void StorageEngine::restore()
     Logger::info("persistence", "restored " + std::to_string(count) + " key(s) from disk");
 }
 
-void StorageEngine::persist_locked()
+std::vector<Record> StorageEngine::current_dataset()
 {
     std::vector<Record> records;
     for (const auto &[key, value] : db_.snapshot())
     {
         records.push_back({key, value});
     }
-    persistence_->save(records);
-    stats_.record_persistence();
-    Logger::debug("persistence", "saved " + std::to_string(records.size()) + " key(s)");
+    return records;
 }
 
 void StorageEngine::finish_operation()
 {
     // Classify the just-completed operation: it is a write if it changed the
-    // data (which also triggers persistence), otherwise a read.
-    if (db_.take_dirty())
-    {
-        persist_locked();
-        stats_.record_write();
-    }
-    else
+    // data (which also triggers persistence), otherwise a read. The mutation
+    // journal is always drained so it never leaks into the next operation.
+    const bool changed = db_.take_dirty();
+    std::vector<Database::Mutation> mutations = db_.take_mutations();
+    if (!changed)
     {
         stats_.record_read();
+        return;
     }
+
+    // Snapshot ignores `ops` and writes `dataset`; AOF appends `ops` and skips
+    // the (lazy) dataset -- so it is never built on the append-only hot path.
+    persistence_->record(to_write_ops(mutations), [this] { return current_dataset(); });
+    stats_.record_persistence();
+    stats_.record_write();
 }
 
 void StorageEngine::save()
 {
     std::lock_guard<std::mutex> lock(mutex_);
-    persist_locked();
+    persistence_->checkpoint([this] { return current_dataset(); });
+    stats_.record_persistence();
     last_save_ = std::chrono::system_clock::now();
-    Logger::info("persistence", "explicit save completed");
+    Logger::info("persistence", "explicit checkpoint completed");
 }
 
 long long StorageEngine::last_save_epoch() const

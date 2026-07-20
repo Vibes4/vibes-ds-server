@@ -28,7 +28,18 @@ std::vector<Record> SnapshotPersistence::load()
     return records;
 }
 
-void SnapshotPersistence::save(const std::vector<Record> &records)
+void SnapshotPersistence::record(const std::vector<WriteOp> &ops, const DatasetProvider &dataset)
+{
+    (void)ops;  // snapshot is state-oriented; the individual ops are irrelevant
+    write(dataset());
+}
+
+void SnapshotPersistence::checkpoint(const DatasetProvider &dataset)
+{
+    write(dataset());
+}
+
+void SnapshotPersistence::write(const std::vector<Record> &records)
 {
     std::ofstream file(file_path_, std::ios::trunc);
     if (!file.is_open())

@@ -5,20 +5,23 @@
 #include <string>
 
 // Persists the keyspace by rewriting a full snapshot to a text file: one
-// "key value" pair per line, the whole file replaced on every save.
+// "key value" pair per line, the whole file replaced on every write.
 //
 // The file always reflects a complete, consistent view of the data, which makes
-// recovery trivial. The trade-off is O(N) work per save; an append-only
-// strategy would trade that for a log that must be replayed and compacted.
+// recovery trivial. The trade-off is O(N) work per write. It ignores the
+// per-mutation `ops` and simply writes the current dataset.
 class SnapshotPersistence : public PersistenceManager
 {
 public:
     explicit SnapshotPersistence(std::string file_path);
 
     std::vector<Record> load() override;
-    void save(const std::vector<Record> &records) override;
+    void record(const std::vector<WriteOp> &ops, const DatasetProvider &dataset) override;
+    void checkpoint(const DatasetProvider &dataset) override;
 
 private:
+    void write(const std::vector<Record> &records);
+
     std::string file_path_;
 };
 

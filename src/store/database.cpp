@@ -96,6 +96,7 @@ std::optional<std::string> Database::get_value(const std::string &key)
 
 void Database::set_value(const std::string &key, std::string value)
 {
+    mutations_.push_back({Mutation::Kind::Set, key, value});
     map_[key] = Entry{std::move(value), std::nullopt};  // SET clears any TTL
     dirty_ = true;
 }
@@ -103,6 +104,7 @@ void Database::set_value(const std::string &key, std::string value)
 void Database::set_value_keep_ttl(const std::string &key, std::string value)
 {
     purge_if_expired(key);
+    mutations_.push_back({Mutation::Kind::Set, key, value});
     const auto it = map_.find(key);
     if (it != map_.end())
     {
@@ -122,6 +124,7 @@ bool Database::erase(const std::string &key)
     purge_if_expired(key);
     if (map_.erase(key) > 0)
     {
+        mutations_.push_back({Mutation::Kind::Delete, key, {}});
         dirty_ = true;
         return true;
     }
@@ -151,8 +154,15 @@ bool Database::rename(const std::string &from, const std::string &to)
     {
         return false;
     }
-    map_[to] = it->second;  // carries the value and any TTL over
-    map_.erase(it);
+    // Copy the entry out before touching the map, then move it under the new
+    // key. Doing the erase first keeps RENAME onto the same name a no-op.
+    Entry entry = it->second;  // preserves value and any TTL
+    map_.erase(from);
+    const std::string value = entry.value;
+    map_[to] = std::move(entry);
+
+    mutations_.push_back({Mutation::Kind::Delete, from, {}});
+    mutations_.push_back({Mutation::Kind::Set, to, value});
     dirty_ = true;
     return true;
 }
@@ -191,6 +201,7 @@ size_t Database::size()
 void Database::clear()
 {
     map_.clear();
+    mutations_.push_back({Mutation::Kind::Clear, {}, {}});
     dirty_ = true;
 }
 
@@ -261,6 +272,13 @@ bool Database::take_dirty()
     const bool was_dirty = dirty_;
     dirty_ = false;
     return was_dirty;
+}
+
+std::vector<Database::Mutation> Database::take_mutations()
+{
+    std::vector<Mutation> drained;
+    drained.swap(mutations_);
+    return drained;
 }
 
 // ---- observability -------------------------------------------------------

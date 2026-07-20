@@ -7,7 +7,7 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | **v0.2** | Refactor architecture   | Clean foundation            | ✅ Done                       |
 | **v0.3** | Database + Value object | Supports future data types  | 🟡 Partial (Database only)   |
 | **v0.4** | TTL                     | First real Redis feature    | ✅ Done                       |
-| **v0.5** | AOF persistence         | Learn durability            | 🟡 Architecture prepared     |
+| **v0.5** | AOF persistence         | Learn durability            | ✅ Done                       |
 | **v0.6** | RESP protocol           | Compatible with `redis-cli` | ⬜ Not started               |
 | **v0.7** | Benchmarks              | Measure performance         | ⬜ Not started               |
 | **v0.8** | Hashes                  | New data structures         | ⬜ Not started               |
@@ -47,18 +47,18 @@ These were built to support the roadmap rather than being numbered milestones:
 - **v0.4 — Done.** `EXPIRE`, `PEXPIRE`, `TTL`, `PTTL`, `PERSIST`, `SETEX`, with
   lazy expiry on access plus an active background sweeper.
 
-- **v0.5 — Architecture prepared, AOF not implemented.** Persistence is now a
-  strategy behind the `PersistenceManager` interface, injected into
-  `StorageEngine`. `SnapshotPersistence` (full-file rewrite) is the current
-  implementation and survives restarts. AOF itself is not written yet; the seam
-  for adding it is documented in `docs/ARCHITECTURE.md`.
+- **v0.5 — Done.** Persistence is a strategy behind the `PersistenceManager`
+  interface (`load` / `record` / `checkpoint`), injected into `StorageEngine`
+  and selected at startup via `VIBES_PERSISTENCE=snapshot|aof`.
+  `SnapshotPersistence` rewrites the full dataset; `AofPersistence` appends each
+  mutation to a log (fsync policy), replays it on startup, and compacts on
+  `SAVE`/`BGSAVE` or automatically past a threshold. `Database` gained a change
+  journal (`Mutation`s) that AOF logs. See `docs/ARCHITECTURE.md`.
 
 ## Summary
 
-- **Fully done:** v0.2, v0.4
-- **Partial / prepared:** v0.3 (Database, no Value object), v0.5 (pluggable
-  persistence + snapshot, no AOF)
+- **Fully done:** v0.2, v0.4, v0.5
+- **Partial / prepared:** v0.3 (Database, no Value object — deferred until Hashes)
 - **Not started:** v0.6 – v1.2
 
-Roughly **2 of 11 versions fully complete**, with the foundations for v0.3 and
-v0.5 already in place.
+Roughly **3 of 11 versions fully complete**, with v0.3's foundation in place.
