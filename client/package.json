@@ -1,0 +1,52 @@
+{
+  "name": "vibes-ds-client",
+  "version": "0.1.0",
+  "description": "TypeScript client for vibes-ds-server, a Redis-like key-value store served over HTTP.",
+  "keywords": [
+    "vibes",
+    "redis",
+    "key-value",
+    "kv",
+    "client",
+    "http"
+  ],
+  "license": "MIT",
+  "author": "Vaibhav",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run test:unit && npm run test:integration",
+    "test:unit": "vitest run --config vitest.unit.config.ts",
+    "test:integration": "vitest run --config vitest.config.ts",
+    "test:watch": "vitest --config vitest.unit.config.ts",
+    "bench": "tsx bench/bench.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "testcontainers": "^10.13.0",
+    "tsup": "^8.3.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}
